@@ -1,0 +1,11 @@
+{
+  "name": "nexus-intent-engine",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node production-server.mjs",
+    "start:prototype": "node server.mjs",
+    "build": "test -f index.html && test -f src/main.js && test -f src/style.css && test -f server.mjs && test -f production-server.mjs && node --check src/main.js && node --check server.mjs && node --check production-server.mjs"
+  },
+  "dependencies": { "pg": "^8.16.3" }
+}
