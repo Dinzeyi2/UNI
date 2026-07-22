@@ -16,6 +16,14 @@ services:
     environment:
       PORT: 4173
       DATABASE_URL: postgresql://nexus:${POSTGRES_PASSWORD:-nexus-development-only}@postgres:5432/nexus
+      SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env}
+      NEXUS_TOKEN_KEY: ${NEXUS_TOKEN_KEY:?Set NEXUS_TOKEN_KEY in .env}
+      NEXUS_BASE_URL: ${NEXUS_BASE_URL:-http://localhost:4173}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:4173}
+      SMARTTHINGS_CLIENT_ID: ${SMARTTHINGS_CLIENT_ID:-}
+      SMARTTHINGS_CLIENT_SECRET: ${SMARTTHINGS_CLIENT_SECRET:-}
+      HOME_ASSISTANT_URL: ${HOME_ASSISTANT_URL:-}
+      HOME_ASSISTANT_TOKEN: ${HOME_ASSISTANT_TOKEN:-}
     ports:
       - "4173:4173"
     depends_on:

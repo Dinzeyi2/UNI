@@ -11,10 +11,12 @@ The browser creator calls the behavior, simulation, deployment, device, and audi
 ## Run locally
 
 ```bash
-npm start
+cp .env.example .env
+# Set SESSION_SECRET and NEXUS_TOKEN_KEY, then add only the cloud credentials you use.
+docker compose up --build
 ```
 
-Open `http://localhost:4173`. `npm start` runs the Railway-oriented PostgreSQL API and requires `DATABASE_URL` and `SESSION_SECRET`; use `npm run start:prototype` only for the previous local prototype runtime.
+Open `http://localhost:4173`. `npm start` runs the PostgreSQL API and requires `DATABASE_URL`, `SESSION_SECRET`, and `NEXUS_TOKEN_KEY`; use `npm run start:prototype` only for the local prototype runtime. **Do not share cloud credentials in chat or add them to git.** Put them only in `.env` for local Docker use or in your host's encrypted secret manager.
 
 ## Railway API authentication
 
@@ -26,11 +28,15 @@ The production API exposes `POST /api/auth/register`, `POST /api/auth/login`, an
 
 ## Connect a provider
 
+Nexus separates **user authorization** from a commercial ecosystem partnership. A person must approve access to their own home; Nexus then receives only the scoped credentials needed to read the provider's device graph and send supported commands. The MVP currently provides connection flows for SmartThings and Home Assistant. Google Home, Tuya, and Matter are shown as planned integrations rather than implying that an unimplemented connector is available.
+
 1. Copy `.env.example` to your deployment secret manager/environment. Do not place real credentials in the browser or in source control.
 2. Create a SmartThings OAuth application and register `https://YOUR_HOST/api/oauth/smartthings/callback` as its redirect URI.
 3. Set `SMARTTHINGS_CLIENT_ID`, `SMARTTHINGS_CLIENT_SECRET`, `NEXUS_BASE_URL`, and a strong `NEXUS_TOKEN_KEY` on the server.
 4. Call `POST /api/connect/smartthings`; the API returns an authorization URL. Send the user to that URL.
 5. For Home Assistant, configure `HOME_ASSISTANT_URL` and `HOME_ASSISTANT_TOKEN`, then call `POST /api/connect/home_assistant`.
+
+The provider routes also have explicit production aliases: `POST /api/providers/smartthings/connect`, `POST /api/providers/smartthings/refresh`, and `POST /api/providers/smartthings/disconnect`. The equivalent Home Assistant connect/disconnect routes are available; it uses its supplied long-lived token rather than an OAuth refresh token.
 
 The token envelope is AES-256-GCM encrypted server-side. It is never returned by an API response. The SmartThings callback exchanges an OAuth authorization code for a server-side token; Home Assistant uses its server API and a user-created long-lived access token.
 
@@ -44,7 +50,7 @@ User intent → proposed plan → policy validation → user approval
 
 First create an approval with `POST /api/approvals`. Nexus binds that approval to the user, behavior, an SHA-256 hash of the exact action list, a five-minute expiry, and a single-use status. `POST /api/execute` verifies every one of those conditions. Low-risk actions may execute after that approval; medium and high-risk actions also require `explicitConfirmation: true`. Nexus validates that each action is present in the user's imported capability graph before it calls the provider.
 
-The first production deployment must still add PostgreSQL-backed connections/approvals, token refresh, provider rate limiting, provider event subscriptions, and reported-state verification. Do not use this prototype for locks, alarms, garage doors, cameras, heating equipment, or other safety-critical automations.
+`production-server.mjs` now persists users, encrypted provider connections, normalized devices/capabilities, behavior versions, and audit events in PostgreSQL. It implements the SmartThings OAuth authorization-code callback, Home Assistant token connection, and provider synchronization endpoints used by the browser. Token refresh, provider rate limiting, provider event subscriptions, execution receipts, and reported-state verification remain required production-hardening work. Do not use this prototype for locks, alarms, garage doors, cameras, heating equipment, or other safety-critical automations.
 
 ## Current API boundary
 
@@ -63,5 +69,8 @@ The first production deployment must still add PostgreSQL-backed connections/app
 - `POST /api/plans/validate` — apply deterministic risk rules and check that each action is grounded in imported capabilities.
 - `POST /api/approvals` — create a short-lived, single-use approval bound to one exact action list.
 - `POST /api/execute` — execute a grounded, approved provider command. The current translations support Home Assistant lights/media/climate and SmartThings light commands.
+- `POST /api/emergency-stop` — pause every deployed behavior for the authenticated user and record the safety action.
+
+The PostgreSQL API also persists approvals and executions: `POST /api/plans/validate`, `POST /api/approvals`, and `POST /api/execute` validate parameter schemas, bind an approval to the exact SHA-256 action hash, require explicit confirmation for medium/high-risk actions, create an idempotent execution record, and audit command outcomes. `POST /api/behaviors/:id/run` runs a deployed, still-safe low-risk behavior; `POST /api/events` evaluates matching deployed behavior triggers. `POST /api/executions/:id/verify` polls the provider and records whether the reported state matches the requested light action. `POST /api/behaviors/:id/pause`, `resume`, or `stop` and `DELETE /api/behaviors/:id` provide backend behavior lifecycle control.
 
 This keeps the browser away from OAuth credentials while Nexus sends approved commands to the connected ecosystem.
