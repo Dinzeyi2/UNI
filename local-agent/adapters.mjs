@@ -23,13 +23,16 @@ export async function pairHue(device, inventory) {
   const username = result?.[0]?.success?.username;
   if (!username) throw new Error(result?.[0]?.error?.description || 'Press the Hue Bridge link button, then retry pairing.');
   inventory.storeCredential('hue_bridge', device.discoveryId, { username });
-  return { paired: true, adapter: 'hue_bridge', deviceId: device.discoveryId };
+  const lights = await localFetch(device.address, `/api/${username}/lights`);
+  const discovered = Object.entries(lights || {}).map(([lightId, light]) => ({ discoveryId: `${device.discoveryId}:light:${lightId}`, controllerId: device.discoveryId, address: device.address, hostname: light.name, protocol: 'hue_local', serviceType: 'hue_light', adapter: 'hue_bridge', tier: 'local_standard', reason: 'Paired through the local Hue Bridge.', capabilities: ['light.turn_on', 'light.turn_off', 'light.set_brightness', 'light.set_temperature'], localTarget: { lightId }, reportedState: light.state || {}, observedAt: new Date().toISOString() }));
+  inventory.merge(discovered);
+  return { paired: true, adapter: 'hue_bridge', deviceId: device.discoveryId, imported: discovered.length, devices: discovered };
 }
 
 export async function executeHue(device, action, inventory) {
-  const credential = inventory.credential('hue_bridge', device.discoveryId);
+  const credential = inventory.credential('hue_bridge', device.controllerId || device.discoveryId);
   if (!credential) throw new Error('Hue Bridge is not paired');
-  const lightId = action.target?.lightId;
+  const lightId = action.target?.lightId || device.localTarget?.lightId;
   if (!/^\d+$/.test(String(lightId || ''))) throw new Error('Hue actions require target.lightId');
   const state = {};
   if (action.capability === 'light.turn_on') state.on = true;

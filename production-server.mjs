@@ -3,6 +3,7 @@ import { createReadStream, existsSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize } from 'node:path';
 import pg from 'pg';
+import { compileIntentWithLlm } from './intent-compiler.mjs';
 
 const { Pool } = pg;
 const root = process.cwd(); const port = Number(process.env.PORT || 4173); const secret = process.env.SESSION_SECRET;
@@ -36,6 +37,7 @@ async function providerFetch(url, options = {}) { const host = new URL(url).host
 async function capabilityGraph(userId) { const { rows } = await db.query('select d.id,d.provider_device_id as "deviceId",d.name,d.room,d.type,d.online,d.reported_state as "reportedState",d.observed_at as "observedAt",pc.provider,array_remove(array_agg(dc.capability),null) as capabilities from devices d join provider_connections pc on pc.id=d.provider_connection_id left join device_capabilities dc on dc.device_id=d.id where d.user_id=$1 group by d.id,pc.provider order by d.name', [userId]); return rows.map(row => ({ ...row, capabilities: row.capabilities || [] })); }
 const firstDevice = (devices, capability) => devices.find(device => device.capabilities.includes(capability));
 async function compileBehavior(userId, input) { const intent = String(input.intent || '').trim(); if (!intent) throw new Error('intent is required'); const lower = intent.toLowerCase(); const devices = await capabilityGraph(userId); const isAway = /away|leave|leaving|vacation/.test(lower); const isNight = /sleep|night|arrival|arrive|bed|wind down/.test(lower); const isFocus = /focus|work|meeting/.test(lower); const actions = []; const light = firstDevice(devices, 'light.set_brightness'); const speaker = firstDevice(devices, 'speaker.play') || firstDevice(devices, 'speaker.pause'); const thermostat = firstDevice(devices, 'thermostat.set_temperature');
+  if (process.env.LLM_API_URL && process.env.LLM_API_KEY && process.env.LLM_MODEL) { const context = (await db.query('select type,value,source,observed_at as "observedAt",expires_at as "expiresAt" from context_facts where user_id=$1 and (expires_at is null or expires_at>now()) order by observed_at desc limit 50', [userId])).rows; return compileIntentWithLlm({ intent, devices, context }); }
   if (isAway) { const off = firstDevice(devices, 'light.turn_off'); if (off) actions.push({ deviceId: off.deviceId, capability: 'light.turn_off', parameters: {}, reason: 'Avoid leaving lights on while the home is away' }); if (speaker?.capabilities.includes('speaker.pause')) actions.push({ deviceId: speaker.deviceId, capability: 'speaker.pause', parameters: {}, reason: 'Pause media before the home is empty' }); }
   else if (light) actions.push({ deviceId: light.deviceId, capability: 'light.set_brightness', parameters: { percent: isNight ? 10 : 70 }, reason: isNight ? 'Keep lighting low at night' : 'Create a focused workspace' });
   if (isFocus && speaker?.capabilities.includes('speaker.play')) actions.push({ deviceId: speaker.deviceId, capability: 'speaker.play', parameters: { content: 'focus_playlist' }, reason: 'Provide optional focus audio' });

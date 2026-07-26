@@ -36,9 +36,11 @@ export NEXUS_AGENT_SECRET="$(openssl rand -hex 32)"
 npm run start:agent
 ```
 
-The agent binds to `127.0.0.1:4180` by default. Its authenticated API provides `POST /discover`, `GET /inventory`, `POST /pair/hue`, and `POST /execute`. Hue pairing requires the user to press the physical bridge link button; its pairing credential is encrypted in the local state file. The first executable adapters support paired Hue Bridge light actions and compatible Shelly switch on/off RPC. Unknown devices remain visible but non-executable instead of being probed with arbitrary packets. Expose the agent remotely only through a separately authenticated, encrypted tunnel; never port-forward it directly to the internet.
+The agent binds to `127.0.0.1:4180` by default. Its authenticated API provides `POST /discover`, `GET /inventory`, `POST /pair/hue`, and `POST /execute`. Hue pairing requires the user to press the physical bridge link button; its pairing credential is encrypted in the local state file and paired lights are imported as individually addressable capabilities. The first executable adapters support paired Hue Bridge light actions and compatible Shelly switch on/off RPC. Unknown devices remain visible but non-executable instead of being probed with arbitrary packets. Expose the agent remotely only through a separately authenticated, encrypted tunnel; never port-forward it directly to the internet.
 
-This is an initial local-control foundation, not universal Wi-Fi control. Matter commissioning, HomeKit pairing, Sonos control, device metadata enrichment, DHCP/MAC reconciliation, and the outbound Railway synchronization tunnel require dedicated adapters and are intentionally not faked by this implementation.
+When `LLM_API_URL`, `LLM_API_KEY`, and `LLM_MODEL` point to an OpenAI-compatible strict structured-output endpoint, `POST /create` converts an arbitrary user intention plus the real local inventory into a grounded Behavior proposal. The compiler is given only normalized devices/context, and its output is rejected if it invents a device, capability, or invalid parameter. The user must then approve the proposal through `POST /behaviors/deploy`; `POST /events` runs matching triggers locally. Failed primary actions use only explicitly compiled, capability-grounded fallbacks. The runtime persists deployed state machines so they survive agent restarts.
+
+This is a functional local creation path for the adapters above, not universal Wi-Fi control. Matter commissioning, HomeKit pairing, Sonos control, broader context connectors, DHCP/MAC reconciliation, spatial CSI sensing, and the outbound Railway synchronization tunnel require dedicated adapters and are intentionally not faked by this implementation.
 
 ## Connect a provider
 
