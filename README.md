@@ -26,6 +26,20 @@ The production API exposes `POST /api/auth/register`, `POST /api/auth/login`, an
 
 `db/schema.sql` defines the PostgreSQL contract for users, organizations, provider connections, devices/capabilities, context facts, behaviors/versions, approvals, executions, audit events, packages, and installations. `docker compose up` starts PostgreSQL with that schema and the Nexus container foundation. See [production-foundation.md](docs/production-foundation.md) before migrating the local runtime state store.
 
+## Local-first device agent
+
+`local-agent.mjs` is the in-home half of Nexus. Run it on a Raspberry Pi, mini-PC, NAS, or other trusted machine connected to the user's LAN—not on Railway. It actively discovers devices advertised through SSDP and DNS-SD/mDNS, classifies them as locally supported, pairing-required, or locked/unknown, and retains a local inventory. Discovery never implies permission to control a device.
+
+```bash
+export NEXUS_AGENT_TOKEN="$(openssl rand -hex 32)"
+export NEXUS_AGENT_SECRET="$(openssl rand -hex 32)"
+npm run start:agent
+```
+
+The agent binds to `127.0.0.1:4180` by default. Its authenticated API provides `POST /discover`, `GET /inventory`, `POST /pair/hue`, and `POST /execute`. Hue pairing requires the user to press the physical bridge link button; its pairing credential is encrypted in the local state file. The first executable adapters support paired Hue Bridge light actions and compatible Shelly switch on/off RPC. Unknown devices remain visible but non-executable instead of being probed with arbitrary packets. Expose the agent remotely only through a separately authenticated, encrypted tunnel; never port-forward it directly to the internet.
+
+This is an initial local-control foundation, not universal Wi-Fi control. Matter commissioning, HomeKit pairing, Sonos control, device metadata enrichment, DHCP/MAC reconciliation, and the outbound Railway synchronization tunnel require dedicated adapters and are intentionally not faked by this implementation.
+
 ## Connect a provider
 
 Nexus separates **user authorization** from a commercial ecosystem partnership. A person must approve access to their own home; Nexus then receives only the scoped credentials needed to read the provider's device graph and send supported commands. The MVP currently provides connection flows for SmartThings and Home Assistant. Google Home, Tuya, and Matter are shown as planned integrations rather than implying that an unimplemented connector is available.
