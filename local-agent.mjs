@@ -15,6 +15,7 @@ const secret = process.env.NEXUS_AGENT_SECRET;
 if (!token || token.length < 24 || !secret || secret.length < 24) throw new Error('NEXUS_AGENT_TOKEN and NEXUS_AGENT_SECRET must each contain at least 24 characters');
 const inventory = new LocalInventory(process.env.NEXUS_AGENT_STATE || join(process.cwd(), '.nexus-local-agent.json'), secret);
 const runtime = new LocalBehaviorRuntime(process.env.NEXUS_AGENT_RUNTIME_STATE || join(process.cwd(), '.nexus-local-runtime.json'), inventory, executeLocal);
+runtime.start();
 const cloudSync = new CloudAgentSync({ baseUrl: process.env.NEXUS_CLOUD_URL, token: process.env.NEXUS_CLOUD_AGENT_TOKEN, inventory, runtime, intervalMs: Number(process.env.NEXUS_CLOUD_SYNC_INTERVAL_MS || 10_000) });
 cloudSync.start();
 const send = (response, status, value) => { response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); response.end(JSON.stringify(value)); };

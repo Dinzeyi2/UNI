@@ -25,7 +25,13 @@ test('structured compiler validates model output against the environment', async
 
 test('local runtime uses a compiled fallback when the primary action fails', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'nexus-runtime-'));
-  try { const inventory = { list: () => devices.map(device => ({ ...device, discoveryId: device.deviceId, adapter: 'hue_bridge' })) }; const executed = []; const runtime = new LocalBehaviorRuntime(join(directory, 'runtime.json'), inventory, async device => { executed.push(device.discoveryId); if (device.discoveryId === 'primary') throw new Error('offline'); return { acknowledged: true }; }); runtime.deploy(behavior); const runs = await runtime.dispatch({ type: 'desk.occupied', value: true }); assert.deepEqual(executed, ['primary', 'fallback']); assert.equal(runs[0].results[0].fallback, true); }
+  try { const inventory = { list: () => devices.map(device => ({ ...device, discoveryId: device.deviceId, adapter: 'hue_bridge' })) }; const executed = []; const runtime = new LocalBehaviorRuntime(join(directory, 'runtime.json'), inventory, async device => { executed.push(device.discoveryId); if (device.discoveryId === 'primary') throw new Error('offline'); return { acknowledged: true }; }); runtime.deploy(behavior); const runs = await runtime.dispatch({ type: 'desk.occupied', value: true }); assert.deepEqual(executed, ['primary', 'primary', 'primary', 'fallback']); assert.equal(runs[0].results[0].fallback, true); }
+  finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('manual overrides suppress behavior actions without fighting the user', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'nexus-override-')); const executed = [];
+  try { const inventory = { list: () => devices.map(device => ({ ...device, discoveryId: device.deviceId, adapter: 'hue_bridge' })) }; const runtime = new LocalBehaviorRuntime(join(directory, 'runtime.json'), inventory, async device => executed.push(device.discoveryId)); runtime.deploy(behavior); await runtime.dispatch({ type: 'device.manual_override', deviceId: 'primary', holdMinutes: 10 }); const runs = await runtime.dispatch({ type: 'desk.occupied' }); assert.equal(runs[0].results[0].reason, 'manual_override'); assert.deepEqual(executed, []); }
   finally { rmSync(directory, { recursive: true, force: true }); }
 });
 

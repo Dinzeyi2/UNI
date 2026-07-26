@@ -7,6 +7,7 @@ export class LocalInventory {
   save() { writeFileSync(this.path, JSON.stringify(this.state, null, 2), { mode: 0o600 }); }
   merge(devices) { for (const device of devices) { const previous = this.state.devices[device.discoveryId] || {}; this.state.devices[device.discoveryId] = { ...previous, ...device, firstSeenAt: previous.firstSeenAt || device.observedAt, status: 'online' }; } this.save(); return this.list(); }
   list() { return Object.values(this.state.devices); }
+  markStatus(deviceId, status) { if (this.state.devices[deviceId]) { this.state.devices[deviceId].status = status; this.state.devices[deviceId].statusChangedAt = new Date().toISOString(); this.save(); } }
   credential(adapter, deviceId) { const envelope = this.state.credentials[`${adapter}:${deviceId}`]; return envelope ? this.decrypt(envelope) : null; }
   storeCredential(adapter, deviceId, value) { this.state.credentials[`${adapter}:${deviceId}`] = this.encrypt(value); this.save(); }
   encrypt(value) { const iv = randomBytes(12); const cipher = createCipheriv('aes-256-gcm', this.key, iv); const body = Buffer.concat([cipher.update(JSON.stringify(value)), cipher.final()]); return `${iv.toString('base64')}.${cipher.getAuthTag().toString('base64')}.${body.toString('base64')}`; }

@@ -43,12 +43,12 @@ export function validateBehaviorSpecification(specification, devices) {
 
 export const behaviorJsonSchema = {
   name: 'nexus_behavior', strict: true, schema: {
-    type: 'object', additionalProperties: false, required: ['name', 'goal', 'triggers', 'conditions', 'actions', 'fallbacks', 'safeguards', 'termination'],
+    type: 'object', additionalProperties: false, required: ['name', 'goal', 'priority', 'triggers', 'conditions', 'actions', 'fallbacks', 'safeguards', 'termination'],
     properties: {
-      name: { type: 'string' }, goal: { type: 'string' },
-      triggers: { type: 'array', minItems: 1, items: { type: 'object', additionalProperties: false, required: ['type', 'deviceId', 'event'], properties: { type: { type: 'string' }, deviceId: { type: ['string', 'null'] }, event: { type: ['string', 'null'] } } } },
-      conditions: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['type', 'start', 'end', 'value'], properties: { type: { type: 'string' }, start: { type: ['string', 'null'] }, end: { type: ['string', 'null'] }, value: {} } } },
-      actions: { type: 'array', minItems: 1, items: { type: 'object', additionalProperties: false, required: ['deviceId', 'capability', 'parameters', 'reason'], properties: { deviceId: { type: 'string' }, capability: { type: 'string', enum: Object.keys(CAPABILITY_REGISTRY) }, parameters: { type: 'object', additionalProperties: true }, reason: { type: 'string' } } } },
+      name: { type: 'string' }, goal: { type: 'string' }, priority: { type: 'integer', minimum: 0, maximum: 100 },
+      triggers: { type: 'array', minItems: 1, items: { type: 'object', additionalProperties: false, required: ['type', 'deviceId', 'event', 'at'], properties: { type: { type: 'string' }, deviceId: { type: ['string', 'null'] }, event: { type: ['string', 'null'] }, at: { type: ['string', 'null'] } } } },
+      conditions: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['type', 'start', 'end', 'value', 'contextType'], properties: { type: { type: 'string' }, start: { type: ['string', 'null'] }, end: { type: ['string', 'null'] }, value: { type: ['string', 'number', 'boolean', 'null'] }, contextType: { type: ['string', 'null'] } } } },
+      actions: { type: 'array', minItems: 1, items: { type: 'object', additionalProperties: false, required: ['deviceId', 'capability', 'parameters', 'reason', 'delaySeconds'], properties: { deviceId: { type: 'string' }, capability: { type: 'string', enum: Object.keys(CAPABILITY_REGISTRY) }, parameters: { type: 'object', additionalProperties: true }, reason: { type: 'string' }, delaySeconds: { type: ['number', 'null'], minimum: 0, maximum: 3600 } } } },
       fallbacks: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['forAction', 'when', 'action'], properties: { forAction: { type: 'integer' }, when: { type: 'string', enum: ['offline', 'timeout', 'unconfirmed'] }, action: { type: 'object', additionalProperties: false, required: ['deviceId', 'capability', 'parameters', 'reason'], properties: { deviceId: { type: 'string' }, capability: { type: 'string', enum: Object.keys(CAPABILITY_REGISTRY) }, parameters: { type: 'object', additionalProperties: true }, reason: { type: 'string' } } } } } },
       safeguards: { type: 'array', items: { type: 'string' } }, termination: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['type', 'afterMinutes'], properties: { type: { type: 'string' }, afterMinutes: { type: ['number', 'null'] } } } }
     }
