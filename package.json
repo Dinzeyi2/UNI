@@ -3,9 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "start": "node production-server.mjs",
+    "start": "node db/migrate.mjs && node production-server.mjs",
     "start:prototype": "node server.mjs",
-    "build": "test -f index.html && test -f src/main.js && test -f src/style.css && test -f server.mjs && test -f production-server.mjs && node --check src/main.js && node --check server.mjs && node --check production-server.mjs"
+    "start:agent": "node local-agent.mjs",
+    "test": "node --test",
+    "build": "test -f index.html && test -f src/main.js && test -f src/style.css && test -f server.mjs && test -f production-server.mjs && test -f local-agent.mjs && node --check src/main.js && node --check server.mjs && node --check production-server.mjs && node --check local-agent.mjs && node --check intent-compiler.mjs && node --check behavior-schema.mjs && node --check db/migrate.mjs"
   },
   "dependencies": { "pg": "^8.16.3" }
 }
