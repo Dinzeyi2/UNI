@@ -40,7 +40,9 @@ The agent binds to `127.0.0.1:4180` by default. Its authenticated API provides `
 
 When `LLM_API_URL`, `LLM_API_KEY`, and `LLM_MODEL` point to an OpenAI-compatible strict structured-output endpoint, `POST /create` converts an arbitrary user intention plus the real local inventory into a grounded Behavior proposal. The compiler is given only normalized devices/context, and its output is rejected if it invents a device, capability, or invalid parameter. The user must then approve the proposal through `POST /behaviors/deploy`; `POST /events` runs matching triggers locally. Failed primary actions use only explicitly compiled, capability-grounded fallbacks. The runtime persists deployed state machines so they survive agent restarts.
 
-This is a functional local creation path for the adapters above, not universal Wi-Fi control. Matter commissioning, HomeKit pairing, Sonos control, broader context connectors, DHCP/MAC reconciliation, spatial CSI sensing, and the outbound Railway synchronization tunnel require dedicated adapters and are intentionally not faked by this implementation.
+The Railway control plane can claim a home agent with `POST /api/agents`. The one-time token returned by that endpoint is stored as `NEXUS_CLOUD_AGENT_TOKEN` on the home agent alongside the HTTPS `NEXUS_CLOUD_URL`. The agent then makes an outbound-only authenticated request to `/api/agent/sync`: it uploads normalized inventory, receives the user's deployed/paused Behaviors, and persists them in the local runtime. No inbound router port or direct public exposure of the agent is required. Revoking an agent with `DELETE /api/agents/:id` disables later synchronization.
+
+This is a functional local creation path for the adapters above, not universal Wi-Fi control. Matter commissioning, HomeKit pairing, Sonos control, broader context connectors, DHCP/MAC reconciliation, and spatial CSI sensing require dedicated adapters and are intentionally not faked by this implementation.
 
 ## Connect a provider
 
