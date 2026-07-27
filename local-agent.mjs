@@ -2,7 +2,7 @@ import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { discoverLocal, localIpv4Networks } from './local-agent/discovery.mjs';
-import { executeLocal, pairHue } from './local-agent/adapters.mjs';
+import { createDefaultAdapterRegistry } from './local-agent/adapters.mjs';
 import { LocalInventory } from './local-agent/inventory.mjs';
 import { LocalBehaviorRuntime } from './local-agent/runtime.mjs';
 import { compileIntentWithLlm } from './intent-compiler.mjs';
@@ -14,6 +14,9 @@ const token = process.env.NEXUS_AGENT_TOKEN;
 const secret = process.env.NEXUS_AGENT_SECRET;
 if (!token || token.length < 24 || !secret || secret.length < 24) throw new Error('NEXUS_AGENT_TOKEN and NEXUS_AGENT_SECRET must each contain at least 24 characters');
 const inventory = new LocalInventory(process.env.NEXUS_AGENT_STATE || join(process.cwd(), '.nexus-local-agent.json'), secret);
+const adapters = createDefaultAdapterRegistry();
+for (const modulePath of String(process.env.NEXUS_ADAPTER_MODULES || '').split(',').map(value => value.trim()).filter(Boolean)) { const plugin = await import(modulePath); adapters.register(plugin.default || plugin.adapter); }
+const executeLocal = (device, action, state) => adapters.execute(device, action, state);
 const runtime = new LocalBehaviorRuntime(process.env.NEXUS_AGENT_RUNTIME_STATE || join(process.cwd(), '.nexus-local-runtime.json'), inventory, executeLocal);
 runtime.start();
 const cloudSync = new CloudAgentSync({ baseUrl: process.env.NEXUS_CLOUD_URL, token: process.env.NEXUS_CLOUD_AGENT_TOKEN, inventory, runtime, intervalMs: Number(process.env.NEXUS_CLOUD_SYNC_INTERVAL_MS || 10_000) });
@@ -29,8 +32,9 @@ createServer(async (request, response) => {
     if (url.pathname === '/health') return send(response, 200, { status: 'ok', mode: 'local-first', networks: localIpv4Networks().length });
     if (!authorized(request)) return send(response, 401, { error: 'Agent authentication required' });
     if (request.method === 'GET' && url.pathname === '/inventory') return send(response, 200, inventory.list());
-    if (request.method === 'POST' && url.pathname === '/discover') return send(response, 200, inventory.merge(await discoverLocal()));
-    if (request.method === 'POST' && url.pathname === '/pair/hue') { const input = await read(request); const device = inventory.list().find(item => item.discoveryId === input.deviceId && item.adapter === 'hue_bridge'); if (!device) return send(response, 404, { error: 'Discovered Hue Bridge not found' }); return send(response, 200, await pairHue(device, inventory)); }
+    if (request.method === 'POST' && url.pathname === '/discover') return send(response, 200, inventory.merge((await discoverLocal()).map(device => adapters.classify(device))));
+    if (request.method === 'GET' && url.pathname === '/adapters') return send(response, 200, adapters.list());
+    if (request.method === 'POST' && url.pathname.match(/^\/pair\/[^/]+$/)) { const input = await read(request); const requested = url.pathname.split('/').pop(); const adapterId = requested === 'hue' ? 'hue_bridge' : requested; const device = inventory.list().find(item => item.discoveryId === input.deviceId); if (!device) return send(response, 404, { error: 'Discovered device not found' }); return send(response, 200, await adapters.pair(adapterId, device, inventory, input)); }
     if (request.method === 'POST' && url.pathname === '/execute') { const input = await read(request); const device = inventory.list().find(item => item.discoveryId === input.deviceId); if (!device) return send(response, 404, { error: 'Discovered device not found' }); if (!input.action?.capability) return send(response, 400, { error: 'action.capability is required' }); return send(response, 200, await executeLocal(device, input.action, inventory)); }
     if (request.method === 'POST' && url.pathname === '/create') { const input = await read(request); if (!String(input.intent || '').trim()) return send(response, 400, { error: 'intent is required' }); const behavior = await compileIntentWithLlm({ intent: input.intent, devices: compilerDevices(), context: input.context || [] }); return send(response, 201, { behaviorId: randomUUID(), status: 'proposal', ...behavior }); }
     if (request.method === 'GET' && url.pathname === '/behaviors') return send(response, 200, runtime.list());

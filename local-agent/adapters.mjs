@@ -1,4 +1,5 @@
 import net from 'node:net';
+import { AdapterRegistry } from './plugin-registry.mjs';
 
 function privateAddress(address) {
   if (!net.isIPv4(address)) return false;
@@ -52,8 +53,13 @@ export async function executeShelly(device, action) {
   return { acknowledged: true, adapter: 'shelly', result };
 }
 
+async function verifyHue(device, action, inventory) { const credential = inventory.credential('hue_bridge', device.controllerId || device.discoveryId); const lightId = device.localTarget?.lightId; if (!credential || !lightId) return { confirmed: false, reason: 'Pairing or light target unavailable' }; const light = await localFetch(device.address, `/api/${credential.username}/lights/${lightId}`); const state = light?.state || {}; const confirmed = action.capability === 'light.turn_on' ? state.on === true : action.capability === 'light.turn_off' ? state.on === false : action.capability === 'light.set_brightness' ? Math.abs((state.bri || 0) - Math.round(action.parameters.percent * 2.54)) <= 2 : action.capability === 'light.set_temperature' ? Math.abs((state.ct || 0) - Math.round(1_000_000 / action.parameters.kelvin)) <= 2 : false; return { confirmed, reportedState: state }; }
+async function verifyShelly(device, action) { const id = Number(action.target?.channel || 0); const state = await localFetch(device.address, `/rpc/Switch.GetStatus?id=${id}`); const desired = action.capability === 'light.turn_on'; return { confirmed: state?.output === desired, reportedState: state }; }
+
+export function createDefaultAdapterRegistry() { return new AdapterRegistry()
+  .register({ id: 'hue_bridge', name: 'Philips Hue (local bridge)', canPair: true, match: device => /hue|philips|ipbridge|hue_light/.test(`${device.serviceType || ''} ${device.server || ''}`.toLowerCase()), capabilities: ['light.turn_on', 'light.turn_off', 'light.set_brightness', 'light.set_temperature'], pair: pairHue, execute: executeHue, verify: verifyHue })
+  .register({ id: 'shelly', name: 'Shelly local RPC', match: device => /shelly/.test(`${device.serviceType || ''} ${device.server || ''}`.toLowerCase()), capabilities: ['light.turn_on', 'light.turn_off'], execute: executeShelly, verify: verifyShelly }); }
+
 export async function executeLocal(device, action, inventory) {
-  if (device.adapter === 'hue_bridge') return executeHue(device, action, inventory);
-  if (device.adapter === 'shelly') return executeShelly(device, action);
-  throw new Error(`No executable local adapter for ${device.adapter || 'this device'}`);
+  return createDefaultAdapterRegistry().execute(device, action, inventory);
 }

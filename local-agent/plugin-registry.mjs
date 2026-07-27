@@ -1,0 +1,9 @@
+export class AdapterRegistry {
+  constructor() { this.adapters = new Map(); }
+  register(adapter) { for (const field of ['id', 'name', 'match', 'capabilities', 'execute']) if (!adapter?.[field]) throw new Error(`Adapter is missing ${field}`); if (this.adapters.has(adapter.id)) throw new Error(`Adapter already registered: ${adapter.id}`); this.adapters.set(adapter.id, Object.freeze({ ...adapter })); return this; }
+  list() { return [...this.adapters.values()].map(({ id, name, capabilities, canPair = false }) => ({ id, name, capabilities, canPair })); }
+  adapterFor(device) { return this.adapters.get(device.adapter) || [...this.adapters.values()].find(adapter => adapter.match(device)); }
+  classify(device) { const adapter = this.adapterFor(device); return adapter ? { ...device, adapter: adapter.id, executable: true, capabilities: device.capabilities?.length ? device.capabilities : adapter.capabilities } : { ...device, executable: false, capabilities: device.capabilities || [] }; }
+  async pair(adapterId, device, inventory, input = {}) { const adapter = this.adapters.get(adapterId); if (!adapter?.pair) throw new Error(`Adapter does not support pairing: ${adapterId}`); return adapter.pair(device, inventory, input); }
+  async execute(device, action, inventory) { const adapter = this.adapterFor(device); if (!adapter) throw new Error(`No executable local adapter for ${device.adapter || 'this device'}`); if (!adapter.capabilities.includes(action.capability)) throw new Error(`${adapter.name} does not support ${action.capability}`); const receipt = await adapter.execute(device, action, inventory); const verification = adapter.verify ? await adapter.verify(device, action, inventory) : { confirmed: null, reason: 'Adapter does not expose state verification' }; if (verification.confirmed === false) throw new Error(`Device state unconfirmed: ${verification.reason || action.capability}`); return { ...receipt, verification }; }
+}
