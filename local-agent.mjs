@@ -7,6 +7,7 @@ import { LocalInventory } from './local-agent/inventory.mjs';
 import { LocalBehaviorRuntime } from './local-agent/runtime.mjs';
 import { compileIntentWithLlm } from './intent-compiler.mjs';
 import { CloudAgentSync } from './local-agent/cloud-sync.mjs';
+import { configuredBridgeAdapters } from './local-agent/bridge-adapters.mjs';
 
 const port = Number(process.env.NEXUS_AGENT_PORT || 4180);
 const host = process.env.NEXUS_AGENT_HOST || '127.0.0.1';
@@ -15,6 +16,7 @@ const secret = process.env.NEXUS_AGENT_SECRET;
 if (!token || token.length < 24 || !secret || secret.length < 24) throw new Error('NEXUS_AGENT_TOKEN and NEXUS_AGENT_SECRET must each contain at least 24 characters');
 const inventory = new LocalInventory(process.env.NEXUS_AGENT_STATE || join(process.cwd(), '.nexus-local-agent.json'), secret);
 const adapters = createDefaultAdapterRegistry();
+for (const adapter of configuredBridgeAdapters()) adapters.register(adapter);
 for (const modulePath of String(process.env.NEXUS_ADAPTER_MODULES || '').split(',').map(value => value.trim()).filter(Boolean)) { const plugin = await import(modulePath); adapters.register(plugin.default || plugin.adapter); }
 const executeLocal = (device, action, state) => adapters.execute(device, action, state);
 const runtime = new LocalBehaviorRuntime(process.env.NEXUS_AGENT_RUNTIME_STATE || join(process.cwd(), '.nexus-local-runtime.json'), inventory, executeLocal);

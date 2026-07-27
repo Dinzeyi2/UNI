@@ -7,15 +7,16 @@ function privateAddress(address) {
   return a === 10 || a === 127 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || (a === 169 && b === 254);
 }
 
-async function localFetch(address, path, options = {}) {
+async function localFetch(address, path, options = {}, port = '') {
   if (!privateAddress(address)) throw new Error('Local adapters may only contact private IPv4 addresses');
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 4_000);
   try {
-    const response = await fetch(`http://${address}${path}`, { ...options, signal: controller.signal });
+    const response = await fetch(`http://${address}${port ? `:${port}` : ''}${path}`, { ...options, signal: controller.signal });
     const text = await response.text();
     if (!response.ok) throw new Error(`Local device rejected the request (${response.status})`);
-    return text ? JSON.parse(text) : null;
+    if (!text) return null;
+    return response.headers.get('content-type')?.includes('json') ? JSON.parse(text) : text;
   } finally { clearTimeout(timer); }
 }
 
@@ -56,9 +57,15 @@ export async function executeShelly(device, action) {
 async function verifyHue(device, action, inventory) { const credential = inventory.credential('hue_bridge', device.controllerId || device.discoveryId); const lightId = device.localTarget?.lightId; if (!credential || !lightId) return { confirmed: false, reason: 'Pairing or light target unavailable' }; const light = await localFetch(device.address, `/api/${credential.username}/lights/${lightId}`); const state = light?.state || {}; const confirmed = action.capability === 'light.turn_on' ? state.on === true : action.capability === 'light.turn_off' ? state.on === false : action.capability === 'light.set_brightness' ? Math.abs((state.bri || 0) - Math.round(action.parameters.percent * 2.54)) <= 2 : action.capability === 'light.set_temperature' ? Math.abs((state.ct || 0) - Math.round(1_000_000 / action.parameters.kelvin)) <= 2 : false; return { confirmed, reportedState: state }; }
 async function verifyShelly(device, action) { const id = Number(action.target?.channel || 0); const state = await localFetch(device.address, `/rpc/Switch.GetStatus?id=${id}`); const desired = action.capability === 'light.turn_on'; return { confirmed: state?.output === desired, reportedState: state }; }
 
+const xmlEscape = value => String(value).replace(/[<>&'\"]/g, character => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' })[character]);
+async function sonosSoap(device, service, action, fields = {}) { const body = `<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:${action} xmlns:u="urn:schemas-upnp-org:service:${service}:1">${Object.entries(fields).map(([key, value]) => `<${key}>${xmlEscape(value)}</${key}>`).join('')}</u:${action}></s:Body></s:Envelope>`; return localFetch(device.address, `/MediaRenderer/${service}/Control`, { method: 'POST', headers: { 'content-type': 'text/xml; charset="utf-8"', soapaction: `"urn:schemas-upnp-org:service:${service}:1#${action}"` }, body }, 1400); }
+async function executeSonos(device, action) { if (action.capability === 'speaker.play') await sonosSoap(device, 'AVTransport', 'Play', { InstanceID: 0, Speed: 1 }); else if (action.capability === 'speaker.pause') await sonosSoap(device, 'AVTransport', 'Pause', { InstanceID: 0 }); else if (action.capability === 'speaker.set_volume') await sonosSoap(device, 'RenderingControl', 'SetVolume', { InstanceID: 0, Channel: 'Master', DesiredVolume: Math.round(action.parameters.percent) }); else throw new Error(`Unsupported Sonos capability: ${action.capability}`); return { acknowledged: true, adapter: 'sonos' }; }
+async function verifySonos(device, action) { if (action.capability === 'speaker.set_volume') { const xml = await sonosSoap(device, 'RenderingControl', 'GetVolume', { InstanceID: 0, Channel: 'Master' }); const current = Number(/<CurrentVolume>(\d+)<\/CurrentVolume>/.exec(xml)?.[1]); return { confirmed: current === Math.round(action.parameters.percent), reportedState: { volume: current } }; } const xml = await sonosSoap(device, 'AVTransport', 'GetTransportInfo', { InstanceID: 0 }); const state = /<CurrentTransportState>([^<]+)<\/CurrentTransportState>/.exec(xml)?.[1]; return { confirmed: action.capability === 'speaker.play' ? state === 'PLAYING' : state === 'PAUSED_PLAYBACK', reportedState: { transportState: state } }; }
+
 export function createDefaultAdapterRegistry() { return new AdapterRegistry()
   .register({ id: 'hue_bridge', name: 'Philips Hue (local bridge)', canPair: true, match: device => /hue|philips|ipbridge|hue_light/.test(`${device.serviceType || ''} ${device.server || ''}`.toLowerCase()), capabilities: ['light.turn_on', 'light.turn_off', 'light.set_brightness', 'light.set_temperature'], pair: pairHue, execute: executeHue, verify: verifyHue })
-  .register({ id: 'shelly', name: 'Shelly local RPC', match: device => /shelly/.test(`${device.serviceType || ''} ${device.server || ''}`.toLowerCase()), capabilities: ['light.turn_on', 'light.turn_off'], execute: executeShelly, verify: verifyShelly }); }
+  .register({ id: 'shelly', name: 'Shelly local RPC', match: device => /shelly/.test(`${device.serviceType || ''} ${device.server || ''}`.toLowerCase()), capabilities: ['light.turn_on', 'light.turn_off'], execute: executeShelly, verify: verifyShelly })
+  .register({ id: 'sonos', name: 'Sonos local UPnP', match: device => /sonos|zoneplayer/.test(`${device.serviceType || ''} ${device.server || ''}`.toLowerCase()), capabilities: ['speaker.play', 'speaker.pause', 'speaker.set_volume'], execute: executeSonos, verify: verifySonos }); }
 
 export async function executeLocal(device, action, inventory) {
   return createDefaultAdapterRegistry().execute(device, action, inventory);

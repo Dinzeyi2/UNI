@@ -6,6 +6,8 @@ import test from 'node:test';
 import { classifyDevice, parseSsdpMessage } from '../local-agent/discovery.mjs';
 import { LocalInventory } from '../local-agent/inventory.mjs';
 import { AdapterRegistry } from '../local-agent/plugin-registry.mjs';
+import { createDefaultAdapterRegistry } from '../local-agent/adapters.mjs';
+import { configuredBridgeAdapters } from '../local-agent/bridge-adapters.mjs';
 
 test('parses and classifies a Hue SSDP response', () => {
   const response = ['HTTP/1.1 200 OK', 'LOCATION: http://192.168.1.20/description.xml', 'SERVER: Linux/3.14 UPnP/1.0 IpBridge/1.56.0', 'ST: upnp:rootdevice', 'USN: uuid:hue-bridge::upnp:rootdevice', '', ''].join('\r\n');
@@ -46,4 +48,28 @@ test('adapter plugins classify, execute, and verify normalized actions', async (
 test('adapter verification rejects unconfirmed physical state', async () => {
   const registry = new AdapterRegistry().register({ id: 'unconfirmed', name: 'Unconfirmed adapter', match: () => true, capabilities: ['light.turn_on'], execute: async () => ({ acknowledged: true }), verify: async () => ({ confirmed: false, reason: 'still off' }) });
   await assert.rejects(() => registry.execute({ adapter: 'unconfirmed' }, { capability: 'light.turn_on' }, {}), /state unconfirmed/);
+});
+
+test('Sonos adapter sends local SOAP and verifies reported playback', async () => {
+  const previousFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, options) => {
+    requests.push({ url: String(url), options });
+    const verification = options.headers.soapaction.includes('GetTransportInfo');
+    return { ok: true, status: 200, headers: { get: () => 'text/xml' }, text: async () => verification ? '<CurrentTransportState>PAUSED_PLAYBACK</CurrentTransportState>' : '<ok/>' };
+  };
+  try {
+    const registry = createDefaultAdapterRegistry();
+    const result = await registry.execute({ adapter: 'sonos', address: '192.168.1.40' }, { capability: 'speaker.pause', parameters: {} }, {});
+    assert.equal(result.verification.confirmed, true);
+    assert.equal(requests.length, 2);
+    assert.match(requests[0].url, /^http:\/\/192\.168\.1\.40:1400\//);
+  } finally { globalThis.fetch = previousFetch; }
+});
+
+test('Matter and HomeKit bridges require authenticated loopback services', () => {
+  assert.throws(() => configuredBridgeAdapters({ MATTER_BRIDGE_URL: 'https://example.com', MATTER_BRIDGE_TOKEN: 'secret' }), /loopback/);
+  const adapters = configuredBridgeAdapters({ MATTER_BRIDGE_URL: 'http://127.0.0.1:5580', MATTER_BRIDGE_TOKEN: 'matter-secret', HOMEKIT_BRIDGE_URL: 'http://localhost:5581', HOMEKIT_BRIDGE_TOKEN: 'homekit-secret' });
+  assert.deepEqual(adapters.map(adapter => adapter.id), ['matter', 'homekit']);
+  assert.ok(adapters.every(adapter => adapter.canPair));
 });

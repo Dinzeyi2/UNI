@@ -7,7 +7,7 @@
     "start:prototype": "node server.mjs",
     "start:agent": "node local-agent.mjs",
     "test": "node --test",
-    "build": "test -f index.html && test -f src/main.js && test -f src/style.css && test -f server.mjs && test -f production-server.mjs && test -f local-agent.mjs && node --check src/main.js && node --check server.mjs && node --check production-server.mjs && node --check local-agent.mjs && node --check intent-compiler.mjs && node --check behavior-schema.mjs && node --check db/migrate.mjs"
+    "build": "test -f index.html && test -f src/main.js && test -f src/style.css && test -f server.mjs && test -f production-server.mjs && test -f local-agent.mjs && node --check src/main.js && node --check server.mjs && node --check production-server.mjs && node --check local-agent.mjs && node --check local-agent/adapters.mjs && node --check local-agent/bridge-adapters.mjs && node --check intent-compiler.mjs && node --check behavior-schema.mjs && node --check db/migrate.mjs"
   },
   "dependencies": { "pg": "^8.16.3" }
 }
