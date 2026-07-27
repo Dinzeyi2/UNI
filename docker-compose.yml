@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: nexus
       POSTGRES_USER: nexus
@@ -10,15 +11,34 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexus -d nexus"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+      start_period: 5s
   nexus:
     build: .
     command: npm start
+    restart: unless-stopped
     environment:
       PORT: 4173
       DATABASE_URL: postgresql://nexus:${POSTGRES_PASSWORD:-nexus-development-only}@postgres:5432/nexus
+      SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env}
+      NEXUS_TOKEN_KEY: ${NEXUS_TOKEN_KEY:?Set NEXUS_TOKEN_KEY in .env}
+      NEXUS_BASE_URL: ${NEXUS_BASE_URL:-http://localhost:4173}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:4173}
+      SMARTTHINGS_CLIENT_ID: ${SMARTTHINGS_CLIENT_ID:-}
+      SMARTTHINGS_CLIENT_SECRET: ${SMARTTHINGS_CLIENT_SECRET:-}
+      HOME_ASSISTANT_URL: ${HOME_ASSISTANT_URL:-}
+      HOME_ASSISTANT_TOKEN: ${HOME_ASSISTANT_TOKEN:-}
+      LLM_API_URL: ${LLM_API_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
     ports:
       - "4173:4173"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 volumes:
   postgres_data:
